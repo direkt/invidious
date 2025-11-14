@@ -1,0 +1,45 @@
+name: invidious
+version: 2.20250913.0-dev
+
+authors:
+  - Invidious team <contact@invidious.io>
+  - Contributors!
+
+description: |
+   Invidious is an alternative front-end to YouTube 
+
+dependencies:
+  pg:
+    github: will/crystal-pg
+    version: ~> 0.28.0
+  sqlite3:
+    github: crystal-lang/crystal-sqlite3
+    version: ~> 0.21.0
+  kemal:
+    github: kemalcr/kemal
+    version: ~> 1.6.0
+  protodec:
+    github: iv-org/protodec
+    version: ~> 0.1.5
+  athena-negotiation:
+    github: athena-framework/negotiation
+    version: ~> 0.1.1
+  http_proxy:
+    github: mamantoha/http_proxy
+    version: ~> 0.10.3
+
+development_dependencies:
+  spectator:
+    github: icy-arctic-fox/spectator
+    version: ~> 0.10.4
+  ameba:
+    github: crystal-ameba/ameba
+    version: ~> 1.6.1
+
+crystal: ">= 1.10.0, < 2.0.0"
+
+license: AGPLv3
+
+repository: https://github.com/iv-org/invidious
+homepage: https://invidious.io
+documentation: https://docs.invidious.io
