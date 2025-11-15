@@ -91,12 +91,16 @@ module Invidious::Routes::Feeds
     page ||= 1
     raw_tab = env.params.query["tab"]?.try &.as(String)
 
-    videos, notifications, shorts = get_subscription_feed(user, max_results, page)
+    # Determine active tab before fetching feed to optimize query
+    # Only honor tab=shorts if user has hide_shorts enabled (meaning shorts are separated)
+    requesting_shorts_tab = raw_tab && raw_tab.downcase == "shorts" && user.preferences.hide_shorts
+    
+    videos, notifications, shorts = get_subscription_feed(user, max_results, page, requesting_shorts_tab)
 
-    # Show the Shorts tab if the user hides shorts OR if there are shorts available
-    show_shorts_tab = user.preferences.hide_shorts || !shorts.empty?
-    # Honor tab=shorts only when data exists
-    active_tab = (raw_tab && raw_tab.downcase == "shorts" && !shorts.empty?) ? "shorts" : "all"
+    # Show the Shorts tab only if user hides shorts AND there are shorts available
+    show_shorts_tab = user.preferences.hide_shorts && !shorts.empty?
+    # Honor tab=shorts only when data exists and tab was requested
+    active_tab = (requesting_shorts_tab && !shorts.empty?) ? "shorts" : "all"
 
     if CONFIG.enable_user_notifications
       # "updated" here is used for delivering new notifications, so if
@@ -126,6 +130,8 @@ module Invidious::Routes::Feeds
     base_url_params = [] of String
     base_url_params << "max_results=#{max_results}" if env.params.query.has_key?("max_results")
     base_url_params << "tab=shorts" if active_tab == "shorts"
+    # Always include page parameter for proper pagination
+    base_url_params << "page=#{page}" if page > 1 || env.params.query.has_key?("page")
     base_url += "?#{base_url_params.join("&")}" unless base_url_params.empty?
 
     templated "feeds/subscriptions"
@@ -271,7 +277,7 @@ module Invidious::Routes::Feeds
 
     params = HTTP::Params.parse(env.params.query["params"]? || "")
 
-    videos, notifications, _shorts = get_subscription_feed(user, max_results, page)
+    videos, notifications, _shorts = get_subscription_feed(user, max_results, page, false)
 
     XML.build(indent: "  ", encoding: "UTF-8") do |xml|
       xml.element("feed", "xmlns:yt": "http://www.youtube.com/xml/schemas/2015",

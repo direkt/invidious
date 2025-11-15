@@ -91,9 +91,18 @@
 <script src="/js/watched_indicator.js"></script>
 
 <%=
+  # Calculate pagination based on active tab
+  if active_tab == "shorts"
+    # For shorts tab, show next if we got a full page of shorts
+    show_next = shorts.size == max_results
+  else
+    # For all tab, show next if we got a full page (videos + notifications)
+    show_next = (videos.size + notifications.size) == max_results
+  end
+  
   IV::Frontend::Pagination.nav_numeric(locale,
     base_url: base_url,
     current_page: page,
-    show_next: ((videos.size + notifications.size + shorts.size) == max_results)
+    show_next: show_next
   )
 %>
