@@ -1,9 +1,48 @@
-/docs/
-/dev/
-/lib/
-/bin/
-/.shards/
-/.vscode/
+# Build artifacts
 /invidious
 /sentry
+/bin/
+/lib/
+/.shards/
+
+# Configuration files (user-specific)
 /config/config.yml
+docker-compose.yml
+
+# Documentation (generated)
+/docs/
+/dev/
+
+# IDE files
+/.vscode/
+/.idea/
+*.swp
+*.swo
+*~
+
+# Log files
+*.log
+/logs/
+
+# Backup files
+/backups/
+*.bak
+*.backup
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# Crystal-specific
+.crystal/
