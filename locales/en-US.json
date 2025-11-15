@@ -135,6 +135,8 @@
     "preferences_unseen_only_label": "Only show unwatched: ",
     "preferences_notifications_only_label": "Only show notifications (if there are any): ",
     "preferences_hide_shorts_label": "Move short videos to Shorts tab: ",
+    "preferences_shorts_only_feed_label": "Show only Shorts on subscriptions feed: ",
+    "preferences_shorts_only_feed_hint": "Automatically load the Shorts tab and hide regular videos on the subscriptions page.",
     "preferences_shorts_max_length_label": "Maximum short video length (seconds): ",
     "Enable web notifications": "Enable web notifications",
     "`x` uploaded a video": "`x` uploaded a video",

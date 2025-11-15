@@ -53,6 +53,7 @@ struct ConfigPreferences
   property show_nick : Bool = true
   property save_player_pos : Bool = false
   property hide_shorts : Bool = false
+  property shorts_only_feed : Bool = false
   @[YAML::Field(converter: Preferences::ShortsLengthConverter)]
   property shorts_max_length : Int32 = 60
   @[YAML::Field(ignore: true)]

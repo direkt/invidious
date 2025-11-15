@@ -92,14 +92,18 @@
 
 <%=
   # Calculate pagination based on active tab
+  # total_fetched now represents the original database query count before separation
+  total_fetched = env.get?("total_fetched").try &.as(Int32) || 0
+
   if active_tab == "shorts"
     # For shorts tab, show next if we got a full page of shorts
     show_next = shorts.size == max_results
   else
-    # For all tab, show next if we got a full page (videos + notifications)
-    show_next = (videos.size + notifications.size) == max_results
+    # For all tab, show next if the database query returned a full page
+    # This indicates there might be more items available
+    show_next = total_fetched == max_results
   end
-  
+
   IV::Frontend::Pagination.nav_numeric(locale,
     base_url: base_url,
     current_page: page,

@@ -22,7 +22,7 @@ def create_user(sid, email, password)
   return user, sid
 end
 
-def get_subscription_feed(user, max_results = 40, page = 1, requesting_shorts_tab = false)
+def get_subscription_feed(user, max_results = 40, page = 1, shorts_tab_active = false)
   limit = max_results.clamp(0, MAX_ITEMS_PER_PAGE)
   offset = (page - 1) * limit
 
@@ -30,15 +30,25 @@ def get_subscription_feed(user, max_results = 40, page = 1, requesting_shorts_ta
   view_name = "subscriptions_#{sha256(user.email)}"
 
   preferences = user.preferences
-  hide_shorts = preferences.hide_shorts
+  shorts_only_feed = preferences.shorts_only_feed
+  hide_shorts = preferences.hide_shorts || shorts_only_feed
   shorts = [] of ChannelVideo
+  shorts_available = false
+  active_shorts_tab = shorts_tab_active && hide_shorts
 
-  LOGGER.debug("get_subscription_feed: hide_shorts=#{hide_shorts}, shorts_max_length=#{preferences.shorts_max_length}, notifications_only=#{preferences.notifications_only}, requesting_shorts_tab=#{requesting_shorts_tab}")
+  # Initialize variables to track original database query counts
+  original_videos_count = 0
+  original_notifications_count = 0
+
+  LOGGER.debug("get_subscription_feed: hide_shorts=#{hide_shorts}, shorts_max_length=#{preferences.shorts_max_length}, notifications_only=#{preferences.notifications_only}, shorts_tab_active=#{active_shorts_tab}, shorts_only_feed=#{shorts_only_feed}")
 
   if preferences.notifications_only && !notification_ids.empty?
     # Only show notifications
     notifications = Invidious::Database::ChannelVideos.select(notification_ids)
     videos = [] of ChannelVideo
+
+    # Store the original count of notifications before separation
+    original_notifications_count = notifications.size
 
     if hide_shorts
       short_notifications, regular_notifications = notifications.partition { |video| short_video?(video, preferences) }
@@ -97,46 +107,13 @@ def get_subscription_feed(user, max_results = 40, page = 1, requesting_shorts_ta
       end
     end
 
+    # Store the original count of videos fetched from database before separation
+    original_videos_count = videos.size
+
     if hide_shorts
       short_videos, regular_videos = videos.partition { |video| short_video?(video, preferences) }
       shorts.concat(short_videos)
       videos = regular_videos
-      
-      # If requesting shorts tab, we need to paginate shorts separately
-      # Since shorts are filtered from videos, we need to fetch from the beginning
-      # and collect enough shorts for pagination
-      if requesting_shorts_tab
-        # Calculate how many shorts we need for the current page
-        shorts_needed_start = (page - 1) * limit
-        shorts_needed_end = shorts_needed_start + limit
-        
-        # Start fetching from the beginning (offset 0) to collect all shorts in order
-        # Fetch in batches until we have enough shorts for the current page
-        fetch_offset = 0
-        fetch_batch_size = limit * 3 # Fetch larger batches to reduce queries
-        max_fetches = 20 # Safety limit to prevent infinite loops
-        
-        fetch_count = 0
-        while shorts.size < shorts_needed_end && fetch_count < max_fetches
-          batch_videos = PG_DB.query_all("SELECT * FROM #{view_name} ORDER BY published DESC LIMIT $1 OFFSET $2", fetch_batch_size, fetch_offset, as: ChannelVideo)
-          break if batch_videos.empty?
-          
-          batch_shorts, _ = batch_videos.partition { |video| short_video?(video, preferences) }
-          shorts.concat(batch_shorts)
-          
-          fetch_offset += fetch_batch_size
-          fetch_count += 1
-          
-          # If this batch had no shorts and we still don't have enough, we might be done
-          break if batch_shorts.empty? && shorts.size < shorts_needed_end
-        end
-        
-        # Sort shorts by published date (newest first)
-        shorts.sort_by!(&.published).reverse!
-        
-        # Paginate the shorts array for the current page
-        shorts = shorts[shorts_needed_start, limit]? || shorts[shorts_needed_start..] || [] of ChannelVideo
-      end
     end
 
     case preferences.sort
@@ -157,13 +134,47 @@ def get_subscription_feed(user, max_results = 40, page = 1, requesting_shorts_ta
     videos = videos - notifications
   end
 
+  if hide_shorts
+    required_short_count =
+      if active_shorts_tab
+        Math.max(page * limit, 1)
+      else
+        1
+      end
+
+    cached_shorts = Invidious::SubscriptionShortsCache.fetch(user.email, preferences.shorts_max_length, required_short_count) do |fetch_limit|
+      fetch_short_videos_for_user(view_name, preferences, fetch_limit)
+    end
+
+    shorts_available = !cached_shorts.empty?
+
+    if active_shorts_tab
+      start_index = (page - 1) * limit
+      shorts = cached_shorts[start_index, limit]? || [] of ChannelVideo
+    else
+      shorts_available ||= !shorts.empty?
+    end
+  end
+
   shorts.sort_by!(&.published).reverse!
-  LOGGER.debug("get_subscription_feed: returning #{videos.size} videos, #{notifications.size} notifications, #{shorts.size} shorts")
-  return videos, notifications, shorts
+
+  # Calculate total items fetched for pagination
+  # For pagination purposes, we need to know if the database query returned a full page
+  # This should be the original count from the database query before separation
+  if preferences.notifications_only && !notification_ids.empty?
+    # For notifications_only mode, use the original notification count before separation
+    total_fetched = original_notifications_count
+  else
+    # For normal mode, use the original videos count from database before separation
+    total_fetched = original_videos_count
+  end
+
+  LOGGER.debug("get_subscription_feed: returning #{videos.size} videos, #{notifications.size} notifications, #{shorts.size} shorts, shorts_available=#{shorts_available}, total_fetched=#{total_fetched}, original_videos_count=#{original_videos_count}")
+  return videos, notifications, shorts, shorts_available, total_fetched
 end
 
 private def short_video?(video : ChannelVideo, preferences : Preferences) : Bool
-  return false unless preferences.hide_shorts
+  return false unless preferences.hide_shorts || preferences.shorts_only_feed
 
   # Don't classify live videos or upcoming premieres as shorts
   return false if video.live_now
@@ -173,4 +184,22 @@ private def short_video?(video : ChannelVideo, preferences : Preferences) : Bool
   # Include videos with unknown length (0) as they might be shorts
   # Also include videos with known length that are <= shorts_max_length
   length == 0 || (length > 0 && length <= preferences.shorts_max_length)
+end
+
+private def fetch_short_videos_for_user(view_name : String, preferences : Preferences, limit : Int32)
+  max_length = preferences.shorts_max_length
+  query = <<-SQL
+    SELECT * FROM #{view_name}
+    WHERE live_now = false
+      AND premiere_timestamp IS NULL
+      AND (
+        length_seconds = 0
+        OR (length_seconds > 0 AND length_seconds <= $1)
+        OR (length_seconds IS NULL)
+      )
+    ORDER BY published DESC
+    LIMIT $2
+  SQL
+
+  PG_DB.query_all(query, max_length, limit, as: ChannelVideo)
 end

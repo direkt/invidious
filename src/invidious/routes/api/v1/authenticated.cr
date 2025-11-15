@@ -126,7 +126,7 @@ module Invidious::Routes::API::V1::Authenticated
     page = env.params.query["page"]?.try &.to_i?
     page ||= 1
 
-    videos, notifications, shorts = get_subscription_feed(user, max_results, page, false)
+    videos, notifications, shorts, _shorts_available, _total_fetched = get_subscription_feed(user, max_results, page, false)
 
     JSON.build do |json|
       json.object do

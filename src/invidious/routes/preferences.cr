@@ -148,6 +148,14 @@ module Invidious::Routes::PreferencesRoute
     hide_shorts ||= "off"
     hide_shorts = hide_shorts == "on"
 
+    shorts_only_feed = env.params.body["shorts_only_feed"]?.try &.as(String)
+    shorts_only_feed ||= "off"
+    shorts_only_feed = shorts_only_feed == "on"
+
+    if shorts_only_feed
+      hide_shorts = true
+    end
+
     shorts_max_length = env.params.body["shorts_max_length"]?.try &.as(String).to_i?
     shorts_max_length ||= CONFIG.default_user_preferences.shorts_max_length
     shorts_max_length = shorts_max_length.clamp(1, 300)
@@ -192,6 +200,7 @@ module Invidious::Routes::PreferencesRoute
       save_player_pos:             save_player_pos,
       default_playlist:            default_playlist,
       hide_shorts:                 hide_shorts,
+      shorts_only_feed:            shorts_only_feed,
       shorts_max_length:           shorts_max_length,
     }.to_json)
 
@@ -199,6 +208,7 @@ module Invidious::Routes::PreferencesRoute
       user = user.as(User)
       user.preferences = preferences
       Invidious::Database::Users.update_preferences(user)
+      Invidious::SubscriptionShortsCache.invalidate(user.email)
 
       if CONFIG.admins.includes? user.email
         CONFIG.default_user_preferences.default_home = env.params.body["admin_default_home"]?.try &.as(String) || CONFIG.default_user_preferences.default_home

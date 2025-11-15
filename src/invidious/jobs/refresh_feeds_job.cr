@@ -41,6 +41,7 @@ class Invidious::Jobs::RefreshFeedsJob < Invidious::Jobs::BaseJob
 
               db.exec("REFRESH MATERIALIZED VIEW #{view_name}")
               db.exec("UPDATE users SET feed_needs_update = false WHERE email = $1", email)
+              Invidious::SubscriptionShortsCache.invalidate(email)
             rescue ex
               # Rename old views
               begin
@@ -56,6 +57,7 @@ class Invidious::Jobs::RefreshFeedsJob < Invidious::Jobs::BaseJob
                     LOGGER.info("RefreshFeedsJob: CREATE #{view_name}")
                     db.exec("CREATE MATERIALIZED VIEW #{view_name} AS #{MATERIALIZED_VIEW_SQL.call(email)}")
                     db.exec("UPDATE users SET feed_needs_update = false WHERE email = $1", email)
+                    Invidious::SubscriptionShortsCache.invalidate(email)
                   end
                 rescue ex
                   LOGGER.error("RefreshFeedJobs: REFRESH #{email} : #{ex.message}")
