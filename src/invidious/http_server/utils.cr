@@ -23,17 +23,12 @@ module Invidious::HttpServer
     def add_params_to_url(url : String | URI, params : URI::Params) : URI
       url = URI.parse(url) if url.is_a?(String)
 
-      url_query = url.query || ""
-
-      # Append the parameters
-      url.query = String.build do |str|
-        if !url_query.empty?
-          str << url_query
-          str << '&'
-        end
-
-        str << params
+      # Merge with existing params, replacing any duplicates
+      existing_params = url.query_params
+      params.each do |key, value|
+        existing_params[key] = value
       end
+      url.query_params = existing_params
 
       return url
     end

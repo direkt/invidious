@@ -129,8 +129,7 @@ module Invidious::Routes::Feeds
     base_url_params = [] of String
     base_url_params << "max_results=#{max_results}" if env.params.query.has_key?("max_results")
     base_url_params << "tab=shorts" if active_tab == "shorts"
-    # Always include page parameter for proper pagination
-    base_url_params << "page=#{page}" if page > 1 || env.params.query.has_key?("page")
+    # Don't include page parameter here - pagination component will add it
     base_url += "?#{base_url_params.join("&")}" unless base_url_params.empty?
 
     env.set "total_fetched", total_fetched
