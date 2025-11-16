@@ -24,6 +24,7 @@ module Invidious::HttpServer
       url = URI.parse(url) if url.is_a?(String)
 
       # Merge with existing params, replacing any duplicates
+      # query_params always returns a non-nil URI::Params
       existing_params = url.query_params
       params.each do |key, value|
         existing_params[key] = value
