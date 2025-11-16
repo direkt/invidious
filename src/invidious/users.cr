@@ -34,6 +34,8 @@ def get_subscription_feed(user, max_results = 40, page = 1, shorts_tab_active = 
   hide_shorts = preferences.hide_shorts || shorts_only_feed
   shorts = [] of ChannelVideo
   shorts_available = false
+  # shorts_tab_active: indicates if user requested the shorts tab (from URL parameter)
+  # active_shorts_tab: indicates if we should actually show shorts tab (request + hide_shorts enabled)
   active_shorts_tab = shorts_tab_active && hide_shorts
 
   # Initialize variables to track original database query counts
@@ -135,25 +137,11 @@ def get_subscription_feed(user, max_results = 40, page = 1, shorts_tab_active = 
   end
 
   if hide_shorts
-    required_short_count =
-      if active_shorts_tab
-        Math.max(page * limit, 1)
-      else
-        1
-      end
-
-    cached_shorts = Invidious::SubscriptionShortsCache.fetch(user.email, preferences.shorts_max_length, required_short_count) do |fetch_limit|
-      fetch_short_videos_for_user(view_name, preferences, fetch_limit)
-    end
-
-    shorts_available = !cached_shorts.empty?
-
-    if active_shorts_tab
-      start_index = (page - 1) * limit
-      shorts = cached_shorts[start_index, limit]? || [] of ChannelVideo
-    else
-      shorts_available ||= !shorts.empty?
-    end
+    fetched_shorts, shorts_available_flag = fetch_and_paginate_shorts(
+      user, preferences, view_name, active_shorts_tab, page, limit
+    )
+    shorts.concat(fetched_shorts)
+    shorts_available = shorts_available_flag || !shorts.empty?
   end
 
   shorts.sort_by!(&.published).reverse!
@@ -181,9 +169,32 @@ private def short_video?(video : ChannelVideo, preferences : Preferences) : Bool
   return false if video.premiere_timestamp
 
   length = video.length_seconds
-  # Include videos with unknown length (0) as they might be shorts
+  # Treat 0 as potentially short (unknown length, which may be NULL in database)
   # Also include videos with known length that are <= shorts_max_length
+  # This matches the SQL query logic in fetch_short_videos_for_user
   length == 0 || (length > 0 && length <= preferences.shorts_max_length)
+end
+
+private def fetch_and_paginate_shorts(user : User, preferences : Preferences, view_name : String,
+                                      active_shorts_tab : Bool, page : Int32, limit : Int32) : Tuple(Array(ChannelVideo), Bool)
+  return [] of ChannelVideo, false unless preferences.hide_shorts || preferences.shorts_only_feed
+
+  required_count = active_shorts_tab ? Math.max(page * limit, 1) : 1
+
+  cached_shorts = Invidious::SubscriptionShortsCache.fetch(user.email, preferences.shorts_max_length, required_count) do |fetch_limit|
+    fetch_short_videos_for_user(view_name, preferences, fetch_limit)
+  end
+
+  shorts_available = !cached_shorts.empty?
+
+  if active_shorts_tab
+    start_index = (page - 1) * limit
+    shorts = cached_shorts[start_index, limit]? || [] of ChannelVideo
+  else
+    shorts = [] of ChannelVideo
+  end
+
+  {shorts, shorts_available}
 end
 
 private def fetch_short_videos_for_user(view_name : String, preferences : Preferences, limit : Int32)
