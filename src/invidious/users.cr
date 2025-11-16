@@ -140,8 +140,15 @@ def get_subscription_feed(user, max_results = 40, page = 1, shorts_tab_active = 
     fetched_shorts, shorts_available_flag = fetch_and_paginate_shorts(
       user, preferences, view_name, active_shorts_tab, page, limit
     )
-    shorts.concat(fetched_shorts)
-    shorts_available = shorts_available_flag || !shorts.empty?
+    if active_shorts_tab
+      # When shorts tab is active, replace shorts with paginated cache results
+      # This ensures we don't include pre-separated shorts from notifications/videos
+      shorts = fetched_shorts
+      shorts_available = shorts_available_flag
+    else
+      # When shorts tab is not active, keep pre-separated shorts and just check availability
+      shorts_available = shorts_available_flag || !shorts.empty?
+    end
   end
 
   shorts.sort_by!(&.published).reverse!
