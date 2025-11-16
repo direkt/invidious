@@ -152,6 +152,8 @@ module Invidious::Routes::PreferencesRoute
     shorts_only_feed ||= "off"
     shorts_only_feed = shorts_only_feed == "on"
 
+    # When shorts_only_feed is enabled, hide_shorts must also be enabled
+    # This ensures shorts are separated into their own tab
     if shorts_only_feed
       hide_shorts = true
     end

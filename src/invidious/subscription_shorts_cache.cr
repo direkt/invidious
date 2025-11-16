@@ -27,6 +27,14 @@ module Invidious::SubscriptionShortsCache
   @@cache = {} of String => SubscriptionShortsCacheEntry
   @@mutex = Mutex.new
 
+  # Fetches shorts for a user, using cache when available.
+  #
+  # *email*: User's email address
+  # *max_length*: Maximum length in seconds for a video to be considered a short
+  # *required_count*: Minimum number of shorts needed
+  # *block*: Block that fetches shorts from the database if cache miss
+  #
+  # Returns: Array of ChannelVideo shorts, or empty array on error
   def fetch(email : String, max_length : Int32, required_count : Int32, &block : Int32 -> Array(ChannelVideo)) : Array(ChannelVideo)
     required = required_count.clamp(1, MAX_FETCH)
 
@@ -36,16 +44,26 @@ module Invidious::SubscriptionShortsCache
 
     fetch_limit = Math.max(required, MIN_FETCH)
     fetch_limit = Math.min(fetch_limit, MAX_FETCH)
-    shorts = yield fetch_limit
-
-    store(email, SubscriptionShortsCacheEntry.new(shorts, max_length, CACHE_TTL))
-    shorts.dup
+    
+    begin
+      shorts = yield fetch_limit
+      store(email, SubscriptionShortsCacheEntry.new(shorts, max_length, CACHE_TTL))
+      shorts.dup
+    rescue ex
+      LOGGER.error("SubscriptionShortsCache.fetch failed for #{email}: #{ex.message}")
+      # Return empty array on error rather than crashing
+      [] of ChannelVideo
+    end
   end
 
+  # Invalidates the cache entry for a specific user.
+  #
+  # *email*: User's email address whose cache should be invalidated
   def invalidate(email : String)
     @@mutex.synchronize { @@cache.delete(email) }
   end
 
+  # Clears all entries from the cache.
   def clear
     @@mutex.synchronize { @@cache.clear }
   end
@@ -53,6 +71,8 @@ module Invidious::SubscriptionShortsCache
   private def cached_entry(email : String, max_length : Int32, required : Int32)
     @@mutex.synchronize do
       if entry = @@cache[email]?
+        # Entry is valid if not expired and covers required count
+        # We return it immediately, so expiration during use is acceptable
         return entry unless entry.expired?(max_length) || !entry.covers?(required)
         @@cache.delete(email)
       end
@@ -68,7 +88,9 @@ module Invidious::SubscriptionShortsCache
   end
 
   private def trim_cache
-    while @@cache.size > MAX_CACHE_SIZE
+    # Remove multiple entries at once (e.g., 10% of max size) for efficiency
+    target_size = (MAX_CACHE_SIZE * 0.9).to_i
+    while @@cache.size > target_size
       oldest = @@cache.min_by { |_, entry| entry.expires_at }
       break unless oldest
       @@cache.delete(oldest[0])
