@@ -175,7 +175,7 @@ private def short_video?(video : ChannelVideo, preferences : Preferences) : Bool
   length == 0 || (length > 0 && length <= preferences.shorts_max_length)
 end
 
-private def fetch_and_paginate_shorts(user : User, preferences : Preferences, view_name : String,
+private def fetch_and_paginate_shorts(user : Invidious::User, preferences : Preferences, view_name : String,
                                       active_shorts_tab : Bool, page : Int32, limit : Int32) : Tuple(Array(ChannelVideo), Bool)
   return [] of ChannelVideo, false unless preferences.hide_shorts || preferences.shorts_only_feed
 
